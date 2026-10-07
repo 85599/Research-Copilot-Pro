@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Research Copilot Pro</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <div class="brand">Research<span>Copilot</span> <small>Pro</small></div>
+  <div class="search">
+    <input id="q" type="search" list="sug" autocomplete="off" placeholder="Search company or symbol, press Enter" aria-label="Search symbol">
+    <datalist id="sug"></datalist>
+    <select id="ex" aria-label="Exchange"><option>NSE</option><option>BSE</option></select>
+  </div>
+  <div class="mkt" id="mkt" role="status"></div>
+</header>
+<div class="strip" id="strip" aria-label="Index and macro rates"></div>
+<main>
+  <aside class="pn wl"><h2>Watchlist</h2><div id="wl"></div><p class="hint">Live prices refresh every few seconds while the market is open.</p></aside>
+  <div class="col">
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
+      <button role="tab" data-tab="research" aria-selected="false">AI Research</button>
+    </nav>
+    <section id="p-overview" class="col"></section>
+    <section id="p-research" class="col" hidden></section>
+  </div>
+  <aside class="right col">
+    <section class="pn"><h2>Recent research runs</h2><div id="runs"></div></section>
+    <section class="pn"><h2>Decision log</h2><div id="dlog"></div></section>
+    <section class="pn"><h2>Data provenance</h2><div class="tw"><table><thead><tr><th>Item</th><th>Source</th><th>Status</th></tr></thead><tbody id="prov"></tbody></table></div></section>
+  </aside>
+</main>
+<p class="disc">Educational research tool. Not investment advice and not issued by a SEBI-registered research analyst. LLM output can be wrong; verify every level before trading. Trading involves risk of loss. Live prices come from unofficial NSE/Yahoo endpoints; use a licensed feed for any public product.</p>
+<script src="app.js"></script>
+</body>
+</html>
