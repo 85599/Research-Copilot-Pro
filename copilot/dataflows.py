@@ -36,6 +36,10 @@ def crore(x):
     return "n/a" if x is None or x != x else f"{x / 1e7:,.0f}"
 
 
+def pct(x):
+    return "n/a" if x is None or x != x else f"{x * 100:.1f}%"
+
+
 def is_historical(trade_date):
     return dt.date.fromisoformat(trade_date) < _today()
 
@@ -121,16 +125,25 @@ def market_pack(symbol, ex, ysym, trade_date):
 
 
 # ------------------------------------------------------------------ fundamentals
-INC = ["Total Revenue", "Gross Profit", "Operating Income", "EBITDA", "Net Income", "Diluted EPS"]
-BAL = ["Total Assets", "Total Debt", "Stockholders Equity", "Cash And Cash Equivalents", "Current Assets", "Current Liabilities"]
+INC = ["Total Revenue", "Gross Profit", "Operating Income", "EBITDA", "EBIT", "Interest Expense", "Net Income", "Diluted EPS"]
+BAL = ["Total Assets", "Total Debt", "Net Debt", "Stockholders Equity", "Cash And Cash Equivalents",
+       "Current Assets", "Current Liabilities", "Working Capital", "Inventory", "Receivables", "Accounts Payable"]
 CF = ["Operating Cash Flow", "Capital Expenditure", "Free Cash Flow"]
+QBAL = ["Total Debt", "Cash And Cash Equivalents", "Current Assets", "Current Liabilities", "Inventory", "Receivables"]
+
+
+def _cols(df, trade_date, lag_days=45, n=4):
+    """Report-period columns on/before (trade_date - lag_days), most recent first, capped at n."""
+    if df is None or df.empty:
+        return []
+    limit = pd.Timestamp(trade_date) - pd.Timedelta(days=lag_days)
+    return [c for c in df.columns if pd.Timestamp(c) <= limit][:n]
 
 
 def _stmt(df, rows, trade_date, lag_days=45, n=4):
+    cols = _cols(df, trade_date, lag_days, n)
     if df is None or df.empty:
         return "  (not available)"
-    limit = pd.Timestamp(trade_date) - pd.Timedelta(days=lag_days)
-    cols = [c for c in df.columns if pd.Timestamp(c) <= limit][:n]
     if not cols:
         return "  (no period reported before the analysis date)"
     lines = ["  " + " | ".join(["Item (\u20b9 crore)"] + [str(pd.Timestamp(c).date()) for c in cols])]
@@ -142,12 +155,76 @@ def _stmt(df, rows, trade_date, lag_days=45, n=4):
     return "\n".join(lines)
 
 
+def _val(df, row, trade_date, lag_days=45):
+    """Most recent reported value for `row` (float) or None."""
+    cols = _cols(df, trade_date, lag_days, 1)
+    if not cols or row not in df.index:
+        return None
+    v = df.loc[row, cols[0]]
+    return float(v) if pd.notna(v) else None
+
+
+def _growth(df, row, trade_date, lag_days=45):
+    """Period-over-period growth for `row` from the two most recent columns, or None."""
+    cols = _cols(df, trade_date, lag_days, 2)
+    if len(cols) < 2 or row not in df.index:
+        return None
+    cur, prev = df.loc[row, cols[0]], df.loc[row, cols[1]]
+    if pd.isna(cur) or pd.isna(prev) or not prev:
+        return None
+    return float(cur) / float(prev) - 1
+
+
+def _ratios(fr, trade_date):
+    """Screener.in-style ratios computed from the fetched statements so they tie to the tables below."""
+    inc, qinc, bal, cf = fr.get("inc"), fr.get("qinc"), fr.get("bal"), fr.get("cf")
+    I = lambda r: _val(inc, r, trade_date)  # noqa: E731
+    B = lambda r: _val(bal, r, trade_date)  # noqa: E731
+    C = lambda r: _val(cf, r, trade_date)  # noqa: E731
+    rev, npat = I("Total Revenue"), I("Net Income")
+    ebit = I("EBIT") if I("EBIT") is not None else I("Operating Income")
+    interest = I("Interest Expense")
+    debt, cash, eq = B("Total Debt"), B("Cash And Cash Equivalents"), B("Stockholders Equity")
+    ca, cl = B("Current Assets"), B("Current Liabilities")
+    ocf, fcf = C("Operating Cash Flow"), C("Free Cash Flow")
+    net_debt = (debt - cash) if debt is not None and cash is not None else None
+    lines = [
+        f"Net debt \u20b9{crore(net_debt)} cr (total debt \u20b9{crore(debt)} cr \u2212 cash \u20b9{crore(cash)} cr)",
+        f"Debt/Equity {fmt((debt / eq) if debt is not None and eq else None)}x | "
+        f"Interest coverage {fmt((ebit / abs(interest)) if ebit is not None and interest else None)}x (EBIT/interest) | "
+        f"Current ratio {fmt((ca / cl) if ca and cl else None)}x | "
+        f"Working capital \u20b9{crore((ca - cl) if ca is not None and cl is not None else None)} cr",
+        f"ROCE {pct((ebit / (eq + debt)) if ebit is not None and eq and debt is not None else None)} | "
+        f"ROE {pct((npat / eq) if npat is not None and eq else None)} | "
+        f"Operating margin {pct((ebit / rev) if ebit is not None and rev else None)} | "
+        f"Net margin {pct((npat / rev) if npat is not None and rev else None)}",
+        f"Operating cash flow \u20b9{crore(ocf)} cr | Free cash flow \u20b9{crore(fcf)} cr | "
+        f"OCF/PAT {fmt((ocf / npat) if ocf is not None and npat else None)}x (cash conversion)",
+        f"Growth: revenue YoY {pct(_growth(inc, 'Total Revenue', trade_date))}, PAT YoY {pct(_growth(inc, 'Net Income', trade_date))} | "
+        f"revenue QoQ {pct(_growth(qinc, 'Total Revenue', trade_date))}, PAT QoQ {pct(_growth(qinc, 'Net Income', trade_date))}",
+    ]
+    inv, recv, cor, pay = B("Inventory"), B("Receivables"), I("Cost Of Revenue"), B("Accounts Payable")
+    if recv is not None and inv is not None and cor and rev:
+        dso, dio = recv / rev * 365, inv / cor * 365
+        dpo = (pay / cor * 365) if pay is not None else None
+        lines.append(f"Working-capital cycle: DSO {fmt(dso, 0)}d, DIO {fmt(dio, 0)}d, DPO {fmt(dpo, 0)}d "
+                     f"\u2192 cash conversion cycle ~{fmt(dso + dio - (dpo or 0), 0)}d")
+    return "  " + "\n  ".join(lines)
+
+
 def fundamentals_pack(ysym, ident, trade_date):
     import yfinance as yf
     t = yf.Ticker(ysym)
     i = ident.get("info") or {}
     g = lambda k: i.get(k)  # noqa: E731
-    pct = lambda v: "n/a" if v is None else f"{v * 100:.1f}%"  # noqa: E731
+    fr = {}
+    for name, fn in (("inc", lambda: t.income_stmt), ("qinc", lambda: t.quarterly_income_stmt),
+                     ("bal", lambda: t.balance_sheet), ("qbal", lambda: t.quarterly_balance_sheet),
+                     ("cf", lambda: t.cashflow), ("qcf", lambda: t.quarterly_cashflow)):
+        try:
+            fr[name] = fn()
+        except Exception:  # noqa: BLE001
+            fr[name] = None
     out = [f"FUNDAMENTALS \u2013 {ysym} ({ident.get('name') or ''}) \u2013 analysis date {trade_date}",
            f"Sector/industry: {ident.get('sector') or 'n/a'} / {ident.get('industry') or 'n/a'}",
            f"Market cap \u20b9{crore(g('marketCap'))} crore | trailing P/E {fmt(g('trailingPE'))} | forward P/E {fmt(g('forwardPE'))} | "
@@ -160,14 +237,17 @@ def fundamentals_pack(ysym, ident, trade_date):
            f"(Yahoo approximation; check the exchange shareholding pattern for exact promoter holding and pledge)"]
     if is_historical(trade_date):
         out.append("WARNING: ratios above are as of today, not the analysis date (look-ahead). Statements below are date-filtered.")
-    for title, fn, rows in (("Annual income statement", lambda: t.income_stmt, INC),
-                            ("Quarterly income statement", lambda: t.quarterly_income_stmt, INC),
-                            ("Balance sheet (annual)", lambda: t.balance_sheet, BAL),
-                            ("Cash flow (annual)", lambda: t.cashflow, CF)):
-        try:
-            out.append(f"{title}:\n" + _stmt(fn(), rows, trade_date))
-        except Exception as e:  # noqa: BLE001
-            out.append(f"{title}: unavailable ({type(e).__name__})")
+    try:
+        out.append("Computed ratios (Screener.in-style, derived from the statements below):\n" + _ratios(fr, trade_date))
+    except Exception:  # noqa: BLE001
+        pass
+    for title, key, rows in (("Annual income statement", "inc", INC),
+                             ("Quarterly income statement", "qinc", INC),
+                             ("Balance sheet (annual)", "bal", BAL),
+                             ("Balance sheet (quarterly)", "qbal", QBAL),
+                             ("Cash flow (annual)", "cf", CF),
+                             ("Cash flow (quarterly)", "qcf", CF)):
+        out.append(f"{title}:\n" + _stmt(fr.get(key), rows, trade_date))
     return "\n".join(out)
 
 

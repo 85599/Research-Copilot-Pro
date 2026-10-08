@@ -116,10 +116,23 @@ def market_analyst(llm, bundle, cfg):
 
 
 def fundamentals_analyst(llm, bundle, cfg):
-    task = ("You are a fundamentals researcher. Write a comprehensive report on the company's financials: profile, valuation "
-            "(P/E, P/B, EV/EBITDA vs sector context), profitability (ROE, margins), growth, leverage and liquidity, cash flow quality, "
-            "and shareholding signals. Flag red flags (high debt, falling margins, weak cash conversion, promoter pledge risk if "
-            "visible) and strengths. Amounts are in \u20b9 crore. Provide specific, actionable insights with evidence." + TABLE)
+    task = (
+        "You are a fundamentals analyst who reads a company's financials the way Screener.in presents them. Using ONLY the "
+        "numbers in the data pack (amounts in \u20b9 crore unless shown as a ratio, multiple or %), write a structured report with "
+        "these numbered sections:\n"
+        "1. **Company profile** \u2013 what it does, sector/industry, market cap.\n"
+        "2. **Balance sheet strength** \u2013 total debt, cash, net debt, debt/equity, interest coverage, current ratio, working "
+        "capital; flag red flags (rising debt, weak coverage, negative working capital).\n"
+        "3. **Profitability & margins** \u2013 ROE, ROCE, operating and net margin, and their trend across the periods shown.\n"
+        "4. **Cash flow quality** \u2013 operating cash flow vs PAT (cash conversion), free cash flow, and the cash conversion cycle "
+        "(DSO/DIO/DPO) when available.\n"
+        "5. **Growth & earnings quality** \u2013 YoY and QoQ revenue and PAT growth; is growth funded internally?\n"
+        "6. **Valuation snapshot** \u2013 P/E, P/B, EV/EBITDA, PEG, with sector context if given.\n"
+        "7. **Shareholding & governance** \u2013 promoter/insider and institutional holding, pledge risk if visible.\n"
+        "8. **Strengths vs red flags** \u2013 bullet each, grounded in the figures above.\n"
+        "9. **Overall assessment** \u2013 rate the fundamentals Strong / Average / Weak and justify it in one line.\n"
+        "Cite only figures present in the pack; where a metric reads 'n/a' say it is not disclosed rather than guessing. Do not "
+        "invent sector averages or historical facts that are not in the data." + TABLE)
     return _analyst(llm, "Fundamentals", task, absent(bundle.get("fundamentals"), "fundamentals"), bundle, cfg)
 
 

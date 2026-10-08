@@ -32,6 +32,11 @@ risk → portfolio-manager debate that ends in a rated, sized trade call.
 - **Multi-agent AI research.** A TradingAgents-style pipeline: four analysts in parallel →
   Bull vs Bear debate → Research Manager → Trader → Aggressive/Conservative/Neutral risk debate →
   Portfolio Manager, producing a 5-tier rating with entry / stop / target and a position-size check.
+- **Screener.in-style fundamentals.** The Fundamentals analyst reads a data pack that layers computed
+  ratios (net debt, D/E, interest coverage, current ratio, working capital, ROCE/ROE, OCF-vs-PAT cash
+  conversion, YoY/QoQ growth, cash conversion cycle) plus annual *and* quarterly income statement,
+  balance sheet and cash flow on top of Yahoo's headline multiples — all in ₹ crore, all computed by
+  code so the model only cites verified figures.
 - **Decision log & reflection.** After the holding window each call is scored against Nifty/Sensex,
   reflected on, and the lessons feed later Portfolio Manager prompts.
 - **Provenance.** Every number is computed by code; the LLM only interprets. Each run records which
